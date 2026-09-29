@@ -704,6 +704,24 @@ bot.command('help', async (ctx) => {
   await ctx.reply(helpText, { parse_mode: 'HTML' });
 });
 
+// --- HTTP Health Check Web Server (Required for Render Web Service) ---
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify({
+    status: 'ONLINE',
+    bot: botInfo?.username || 'Mr_PROXYFile_Bot',
+    uptime: Math.floor(process.uptime()) + ' seconds',
+    message: 'Mr. PROXY File Locker Bot is running 24/7!'
+  }));
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 Web Health-Check server listening on port ${PORT} (Render OK)`);
+});
+
 // --- Fetch Bot Info and Launch ---
 bot.telegram.getMe().then(me => {
   botInfo = me;
@@ -719,5 +737,11 @@ bot.telegram.getMe().then(me => {
 });
 
 // Graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', () => {
+  server.close();
+  bot.stop('SIGINT');
+});
+process.once('SIGTERM', () => {
+  server.close();
+  bot.stop('SIGTERM');
+});

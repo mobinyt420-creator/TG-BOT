@@ -1,11 +1,16 @@
 {
   "name": "proxy-file-locker-bot",
   "version": "1.0.0",
-  "description": "Telegram File Locker & Monetization Bot",
+  "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node --dns-result-order=ipv4first index.js"
+    "start": "node --dns-result-order=ipv4first index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
     "dotenv": "^18.0.4",
     "telegraf": "^4.16.3"

@@ -1,11 +1,32 @@
-# Mr. PROXY File Locker Telegram Bot (@Mr_PROXYFile_Bot)
+# ⚡ Mr. PROXY File Locker Bot (@Mr_PROXYFile_Bot)
 
-100% Halal High-Conversion Telegram File Locker & Audience Monetization Bot for Free Fire Creators.
+ইউটিউবার এবং কনটেন্ট ক্রিয়েটরদের জন্য একটি শক্তিশালী টেলিগ্রাম ফাইল লকার এবং অডিয়েন্স রিটেনশন বট।
 
-## Features
-- ⚡ 1-Click Direct Cloud Downloads (No annoying link shorteners)
-- 🔒 Force-Join Telegram Channel Verification (Max audience retention)
-- 💎 Integrated Obin Shop Top-Up Sponsorship
-- 🎬 High-Yield Rewarded Video Ad File Unlocking via Telegram Mini App
-- 👑 Single-Admin Security Panel (Locked strictly to Owner ID `7553569630`)
-- 📊 Live Real-Time Analytics & CSV Export
+---
+
+## 🌟 প্রধান সুবিধাসমূহ:
+
+1. **ফোর্স সাবস্ক্রিপশন (Force Subscription):**
+   * দর্শক ফাইল ডাউনলোড করতে আসলে বট চেক করবে সে আপনার টেলিগ্রাম চ্যানেলে জয়েন আছে কিনা।
+   * চ্যানেলে সাবস্ক্রাইব না করলে ফাইল লক থাকবে। ফলে চ্যানেলের মেম্বার ড্রপ হবে না।
+
+2. **১ ক্লিকে ফাইল আপলোড ও লিংক তৈরি:**
+   * এডমিন হিসেবে আপনি সরাসরি টেলিগ্রামে যেকোনো ফাইল (Zip, 7z, Apk, Txt, Config) পাঠিয়ে দিলেই বট একটি ইউনিক লিংক জেনারেট করবে:
+     `https://t.me/Mr_PROXYFile_Bot?start=file_101`
+   * এই লিংকটি সরাসরি আপনার ইউটিউব ভিডিওর ডেসক্রিপশনে দিয়ে দিন!
+
+3. **নো লিংক শর্টনার - ১০০% সফল ডাউনলোড:**
+   * কোনো বিরক্তিকর শর্টনারের পেজ বা পপআপ নেই।
+   * টেলিগ্রামের ভেতর থেকেই দর্শক ১ ক্লিকে হাই-স্পিডে ফাইল ডাউনলোড করতে পারবে।
+
+4. **অফিশিয়াল শপ প্রমোশন (Obin Shop Integration):**
+   * ফাইল আনলক স্ক্রিনে স্বয়ংক্রিয়ভাবে আপনার ডায়মন্ড শপ `@ObinShop_Bot`-এর প্রমোশন থাকবে।
+
+5. **ব্রডকাস্টার (Broadcast to 100k+ Users):**
+   * বটে যারা একবারও ফাইল নেবে, তাদের আইডি সেভ থাকবে।
+   * নতুন ইউটিউব ভিডিও আসলে `/broadcast` কমান্ড দিয়ে এক ক্লিকে সকল দর্শকের ইনবক্সে নোটিফিকেশন পাঠাতে পারবেন!
+
+---
+
+## 🛠️ চ্যানেল কানেক্ট করার নিয়ম:
+আপনার চ্যানেল থেকে যেকোনো একটি পোস্ট কপি/ফরওয়ার্ড (Forward) করে বটে পাঠিয়ে দিন। বট স্বয়ংক্রিয়ভাবে চ্যানেলটি ডিটেক্ট করে সংযুক্ত করে নেবে।

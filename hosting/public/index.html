@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mr. PROXY File Locker</title>
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Adsgram SDK -->
+  <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0b0f19;
+      --card-bg: rgba(18, 26, 43, 0.85);
+      --card-border: rgba(0, 242, 254, 0.25);
+      --cyan: #00f2fe;
+      --cyan-glow: rgba(0, 242, 254, 0.4);
+      --orange: #ff7b00;
+      --orange-glow: rgba(255, 123, 0, 0.5);
+      --green: #00e676;
+      --text-main: #f0f4f8;
+      --text-muted: #8e9bb0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      background: radial-gradient(circle at 50% 10%, #152238 0%, var(--bg-dark) 100%);
+      color: var(--text-main);
+      font-family: 'Hind Siliguri', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Gaming Glows */
+    .glow-bg {
+      position: fixed;
+      top: -100px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 340px;
+      height: 340px;
+      background: radial-gradient(circle, var(--cyan-glow) 0%, transparent 70%);
+      filter: blur(50px);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 420px;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      padding: 8px 0;
+    }
+
+    .badge-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 242, 254, 0.1);
+      border: 1px solid var(--card-border);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      color: var(--cyan);
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      background: linear-gradient(135deg, #ffffff 0%, var(--cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* File Card */
+    .file-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .file-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--cyan), var(--orange));
+    }
+
+    .file-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .file-icon-box {
+      width: 54px;
+      height: 54px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      border: 1px solid rgba(0, 242, 254, 0.3);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 4px 15px rgba(0, 242, 254, 0.2);
+    }
+
+    .file-type-tag {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: 0.5px;
+      margin-top: -2px;
+    }
+
+    .file-meta {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .file-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-specs {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .file-spec-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--green);
+      background: rgba(0, 230, 118, 0.12);
+      padding: 2px 8px;
+      border-radius: 12px;
+      border: 1px solid rgba(0, 230, 118, 0.3);
+      margin-top: 10px;
+    }
+
+    /* Verification Steps */
+    .steps-container {
+      background: var(--card-bg);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(11, 15, 25, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .step-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .step-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: rgba(0, 242, 254, 0.15);
+      color: var(--cyan);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-num.done {
+      background: var(--green);
+      color: #0b0f19;
+    }
+
+    .step-label {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .step-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Action Buttons */
+    .btn-action {
+      width: 100%;
+      border: none;
+      outline: none;
+      padding: 16px;
+      border-radius: 14px;
+      font-family: 'Hind Siliguri', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.25s ease;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    .btn-watch-ad {
+      background: linear-gradient(135deg, #ff7b00 0%, #ff4500 100%);
+      color: #ffffff;
+      box-shadow: 0 8px 25px var(--orange-glow);
+    }
+
+    .btn-watch-ad:active {
+      transform: scale(0.98);
+      filter: brightness(1.1);
+    }
+
+    .btn-download-now {
+      background: linear-gradient(135deg, #00e676 0%, #00b0ff 100%);
+      color: #0b0f19;
+      font-weight: 800;
+      display: none;
+      box-shadow: 0 8px 25px rgba(0, 230, 118, 0.4);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+
+    /* Fullscreen Rewarded Video Ad Modal Simulator */
+    .ad-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000000;
+      z-index: 9999;
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    .ad-topbar {
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: linear-gradient(180deg, rgba(0,0,0,0.85) 0%, transparent 100%);
+      z-index: 10;
+    }
+
+    .ad-badge {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .ad-timer-pill {
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid var(--orange);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #ff9800;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .ad-video-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #060911;
+    }
+
+    /* Animated Game Ad Showcase */
+    .game-showcase {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      background: linear-gradient(135deg, #0d1b2a 0%, #1b263b 50%, #000814 100%);
+      overflow: hidden;
+    }
+
+    .game-glow-circle {
+      position: absolute;
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 123, 0, 0.4) 0%, transparent 70%);
+      animation: rotateGlow 6s linear infinite;
+    }
+
+    @keyframes rotateGlow {
+      0% { transform: scale(0.9) rotate(0deg); }
+      50% { transform: scale(1.1) rotate(180deg); }
+      100% { transform: scale(0.9) rotate(360deg); }
+    }
+
+    .game-logo {
+      font-size: 64px;
+      z-index: 2;
+      animation: bounce 2s infinite ease-in-out;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+
+    .game-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      margin-top: 14px;
+      z-index: 2;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .game-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      z-index: 2;
+      text-align: center;
+      max-width: 280px;
+      margin-top: 6px;
+    }
+
+    .ad-progress-bar-container {
+      position: absolute;
+      bottom: 74px;
+      left: 16px;
+      right: 16px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      overflow: hidden;
+      z-index: 10;
+    }
+
+    .ad-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--cyan), var(--orange));
+      transition: width 0.1s linear;
+    }
+
+    .ad-bottombar {
+      padding: 16px;
+      background: linear-gradient(0deg, rgba(0,0,0,0.9) 0%, transparent 100%);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .ad-cta-btn {
+      background: #ffffff;
+      color: #0b0f19;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 10px 0 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="glow-bg"></div>
+
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="badge-bar">
+        <span>🛡️</span>
+        <span>VERIFIED CLOUD REPOSITORY</span>
+      </div>
+      <h1 class="title">Mr. PROXY Locker</h1>
+      <p class="subtitle">নিরাপদ ও উচ্চগতির ডিরেক্ট ফাইল ডাউনলোড সিস্টেম</p>
+    </div>
+
+    <!-- File Information Card -->
+    <div class="file-card">
+      <div class="file-row">
+        <div class="file-icon-box">
+          <span id="fileIcon">📦</span>
+          <span class="file-type-tag" id="fileExt">APK</span>
+        </div>
+        <div class="file-meta">
+          <div class="file-name" id="fileName">NoobTopup_v1.0.apk</div>
+          <div class="file-specs">
+            <div class="file-spec-item">
+              <span>💾</span>
+              <span id="fileSize">3.59 MB</span>
+            </div>
+            <div class="file-spec-item">
+              <span>⚡</span>
+              <span>1-ক্লিক ক্লাউড</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="status-badge">
+        <span>🔒</span>
+        <span id="statusText">ভিডিও বিজ্ঞাপন দেখে ফাইল আনলক করুন</span>
+      </div>
+    </div>
+
+    <!-- Steps Progression -->
+    <div class="steps-container">
+      <div class="step-item">
+        <div class="step-left">
+          <div class="step-num done">✓</div>
+          <div>
+            <div class="step-label">চ্যানেল সাবস্ক্রিপশন</div>
+            <div class="step-desc">টেলিগ্রাম চ্যানেলে জয়েন নিশ্চিত হয়েছে</div>
+          </div>
+        </div>
+        <span style="color: var(--green); font-size: 14px;">✅</span>
+      </div>
+
+      <div class="step-item">
+        <div class="step-left">
+          <div class="step-num" id="adStepNum">২</div>
+          <div>
+            <div class="step-label">স্পনসর বিজ্ঞাপন দেখুন</div>
+            <div class="step-desc" id="adStepDesc">১৫ সেকেন্ডের একটি ভিডিও অ্যাড দেখুন</div>
+          </div>
+        </div>
+        <span id="adStatusIcon">⏳</span>
+      </div>
+    </div>
+
+    <!-- Main Action Button -->
+    <button class="btn-action btn-watch-ad" id="btnWatchAd" onclick="startRewardedAd()">
+      <span>🎬</span>
+      <span>ভিডিও বিজ্ঞাপন দেখুন ও আনলক করুন</span>
+    </button>
+
+    <button class="btn-action btn-download-now" id="btnDownloadNow" onclick="deliverFileToUser()">
+      <span>📥</span>
+      <span>ফাইল আনলক হয়েছে! এখনই ডাউনলোড করুন</span>
+    </button>
+
+    <!-- Halal Disclaimer & Guarantee -->
+    <div class="footer">
+      <span>100% Halal Verified • No Link Shorteners • Fast Telegram CDN</span>
+    </div>
+  </div>
+
+  <!-- Fullscreen Rewarded Video Ad Modal Simulator -->
+  <div class="ad-modal" id="adModal">
+    <div class="ad-topbar">
+      <div class="ad-badge">
+        <span>📢</span>
+        <span>স্পনসর বিজ্ঞাপন</span>
+      </div>
+      <div class="ad-timer-pill" id="adTimer">
+        <span>⏳</span>
+        <span id="timerSeconds">15s</span>
+      </div>
+    </div>
+
+    <div class="ad-video-container">
+      <div class="game-showcase">
+        <div class="game-glow-circle"></div>
+        <div class="game-logo">💎</div>
+        <div class="game-title">OBIN SHOP • TOP UP</div>
+        <div class="game-desc">সবচেয়ে কম মূল্যে ও নিরাপদে ফ্রি ফায়ার ডায়মন্ড ও মেম্বারশিপ টপ-আপ করুন মুহূর্তের মধ্যেই! ⚡</div>
+      </div>
+    </div>
+
+    <div class="ad-progress-bar-container">
+      <div class="ad-progress-fill" id="adProgressFill"></div>
+    </div>
+
+    <div class="ad-bottombar">
+      <div style="font-size: 12px; color: #aaa;">
+        পুরো বিজ্ঞাপনটি শেষ হলে ফাইল স্বয়ংক্রিয়ভাবে ডাউনলোড হবে
+      </div>
+      <button class="ad-cta-btn" onclick="window.open('https://t.me/mrmobin9', '_blank')">ভিজিট করুন</button>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Telegram WebApp
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      try {
+        tg.enableClosingConfirmation();
+      } catch (e) {}
+    }
+
+    // Parse URL params (?file=file_102&name=NoobTopup_v1.0.apk&size=3.59 MB&blockId=50561)
+    const urlParams = new URLSearchParams(window.location.search);
+    const fileKey = urlParams.get('file') || 'file_102';
+    const fileName = urlParams.get('name') || 'NoobTopup_v1.0.apk';
+    const fileSize = urlParams.get('size') || '3.59 MB';
+    const adsgramBlockId = urlParams.get('blockId');
+
+    // Update UI with file details
+    document.getElementById('fileName').innerText = fileName;
+    document.getElementById('fileSize').innerText = fileSize;
+    
+    // Auto-detect extension
+    const extMatch = fileName.match(/\.([a-zA-Z0-9]+)$/);
+    if (extMatch) {
+      const ext = extMatch[1].toUpperCase();
+      document.getElementById('fileExt').innerText = ext;
+      if (['ZIP', '7Z', 'RAR'].includes(ext)) {
+        document.getElementById('fileIcon').innerText = '🗂️';
+      } else if (['APK'].includes(ext)) {
+        document.getElementById('fileIcon').innerText = '📱';
+      } else {
+        document.getElementById('fileIcon').innerText = '📄';
+      }
+    }
+
+    // Sound effect generator using Web Audio API
+    function playSuccessChime() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+        osc.frequency.exponentialRampToValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+        osc.frequency.exponentialRampToValueAtTime(783.99, audioCtx.currentTime + 0.2); // G5
+        osc.frequency.exponentialRampToValueAtTime(1046.50, audioCtx.currentTime + 0.3); // C6
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.6);
+      } catch (e) {}
+    }
+
+    // Rewarded Video Ad Runner
+    let isAdFinished = false;
+
+    function startRewardedAd() {
+      // 1. If an active mini-app blockId is present and approved on Adsgram
+      if (window.Adsgram && adsgramBlockId && adsgramBlockId !== '50561' && adsgramBlockId !== 'bot-50561') {
+        try {
+          const AdController = window.Adsgram.init({ blockId: adsgramBlockId });
+          AdController.show().then((result) => {
+            handleAdSuccess();
+          }).catch((err) => {
+            console.warn('Adsgram fallback to video player:', err);
+            runVisualAdPlayer();
+          });
+          return;
+        } catch (err) {
+          console.warn('Adsgram init error:', err);
+        }
+      }
+
+      // 2. High-Yield Interactive Video Ad Player
+      runVisualAdPlayer();
+    }
+
+    function runVisualAdPlayer() {
+      const modal = document.getElementById('adModal');
+      const timerSec = document.getElementById('timerSeconds');
+      const progressFill = document.getElementById('adProgressFill');
+      modal.style.display = 'flex';
+
+      let totalDuration = 15; // 15 seconds
+      let remaining = totalDuration;
+
+      const interval = setInterval(() => {
+        remaining -= 1;
+        timerSec.innerText = remaining + 's';
+        const percent = ((totalDuration - remaining) / totalDuration) * 100;
+        progressFill.style.width = percent + '%';
+
+        if (remaining <= 0) {
+          clearInterval(interval);
+          modal.style.display = 'none';
+          handleAdSuccess();
+        }
+      }, 1000);
+    }
+
+    function handleAdSuccess() {
+      isAdFinished = true;
+
+      // Celebrate
+      playSuccessChime();
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      } catch (e) {}
+
+      // Update UI
+      document.getElementById('adStepNum').className = 'step-num done';
+      document.getElementById('adStepNum').innerText = '✓';
+      document.getElementById('adStepDesc').innerText = 'ভিডিও দেখা সম্পন্ন হয়েছে!';
+      document.getElementById('adStatusIcon').innerText = '✅';
+      document.getElementById('statusText').innerText = 'ফাইল আনলক সম্পন্ন হয়েছে!';
+      document.getElementById('statusText').style.color = 'var(--green)';
+
+      document.getElementById('btnWatchAd').style.display = 'none';
+      document.getElementById('btnDownloadNow').style.display = 'flex';
+
+      // Haptic Feedback in Telegram
+      if (tg?.HapticFeedback) {
+        tg.HapticFeedback.notificationOccurred('success');
+      }
+
+      // Auto trigger deliver after 1.5 seconds if user doesn't click
+      setTimeout(() => {
+        deliverFileToUser();
+      }, 1200);
+    }
+
+    function deliverFileToUser() {
+      const returnUrl = `https://t.me/Mr_PROXYFile_Bot?start=unlocked_${fileKey}`;
+      
+      // If inside Telegram WebApp
+      if (tg) {
+        try {
+          tg.openTelegramLink(returnUrl);
+          setTimeout(() => {
+            tg.close();
+          }, 300);
+          return;
+        } catch (e) {}
+      }
+
+      // Fallback
+      window.location.href = returnUrl;
+    }
+  </script>
+</body>
+</html>
