@@ -704,11 +704,39 @@ bot.command('help', async (ctx) => {
   await ctx.reply(helpText, { parse_mode: 'HTML' });
 });
 
+// --- In-Memory Log Buffer for Live Remote Inspection ---
+const recentLogs = [];
+const origLog = console.log;
+const origErr = console.error;
+console.log = (...args) => {
+  recentLogs.push(`[${new Date().toISOString().substring(11, 19)}] ${args.join(' ')}`);
+  if (recentLogs.length > 80) recentLogs.shift();
+  origLog(...args);
+};
+console.error = (...args) => {
+  recentLogs.push(`[${new Date().toISOString().substring(11, 19)} ERR] ${args.join(' ')}`);
+  if (recentLogs.length > 80) recentLogs.shift();
+  origErr(...args);
+};
+
+// Global update logger
+bot.use(async (ctx, next) => {
+  const sender = ctx.from ? `${ctx.from.id} (@${ctx.from.username || ctx.from.first_name})` : 'unknown';
+  const text = ctx.message ? ctx.message.text : (ctx.callbackQuery ? `callback:${ctx.callbackQuery.data}` : ctx.updateType);
+  console.log(`📥 [TG] ${sender} -> ${text}`);
+  return next();
+});
+
 // --- HTTP Health Check Web Server (Required for Render Web Service) ---
 const http = require('http');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
+  if (req.url === '/logs') {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end(recentLogs.join('\n') || 'No logs recorded yet.');
+  }
+
   res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify({
     status: 'ONLINE',
@@ -726,12 +754,16 @@ server.listen(PORT, '0.0.0.0', () => {
 bot.telegram.getMe().then(me => {
   botInfo = me;
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`🤖 Mr. PROXY File Locker Bot is RUNNING! (@${me.username})`);
+  console.log(`🤖 Bot Name: ${me.first_name} (@${me.username})`);
   console.log(`👑 Sole Owner & Admin: ${SOLE_OWNER_ID} (@mrmobin9)`);
   console.log(`📢 Channel Link: ${db.getSettings().channelInviteLink}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+}).catch(err => {
+  console.error('getMe error:', err.message);
+});
 
-  return bot.launch();
+bot.launch().then(() => {
+  console.log('✅ Telegram Polling is ACTIVE and listening for messages!');
 }).catch(err => {
   console.error('❌ Failed to launch Proxy File Locker Bot:', err.message);
 });
@@ -745,3 +777,4 @@ process.once('SIGTERM', () => {
   server.close();
   bot.stop('SIGTERM');
 });
+
