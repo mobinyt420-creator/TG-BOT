@@ -69,7 +69,7 @@ bot.telegram.setMyCommands([
 function getBottomMenu(isAdminUser = false) {
   const keyboard = [
     ['📁 আজকের ফাইলসমূহ', '📢 অফিশিয়াল চ্যানেল'],
-    ['🛍️ ওবিন শপ (টপ-আপ)', 'ℹ️ হেল্প ও নিয়ম']
+    ['🛍️ নূব টপ-আপ (ডায়মন্ড)', 'ℹ️ হেল্প ও নিয়ম']
   ];
   if (isAdminUser) {
     keyboard.push(['👑 এডমিন কন্ট্রোল']);
@@ -146,7 +146,7 @@ async function renderUserHome(ctx) {
       Markup.button.url('📢 অফিশিয়াল চ্যানেল', settings.channelInviteLink)
     ],
     [
-      Markup.button.url('🛍️ ওবিন শপ (ডায়মন্ড টপ-আপ)', settings.adButtonUrl),
+      Markup.button.url('🛍️ নূব টপ-আপ (ডায়মন্ড কিনুন)', settings.adButtonUrl || 'https://noobtopup.com/'),
       Markup.button.callback('ℹ️ কীভাবে ডাউনলোড করবেন?', 'how_to_download')
     ]
   ];
@@ -253,7 +253,7 @@ async function deliverFile(ctx, file) {
 
   const buttons = [];
   if (settings.adButtonUrl) {
-    buttons.push([Markup.button.url('🛍️ ওবিন শপ (ডায়মন্ড টপ-আপ)', settings.adButtonUrl)]);
+    buttons.push([Markup.button.url('🛍️ নূব টপ-আপ (ডায়মন্ড কিনুন)', settings.adButtonUrl || 'https://noobtopup.com/')]);
   }
   buttons.push([
     Markup.button.url('📢 অফিশিয়াল চ্যানেল', settings.channelInviteLink),
@@ -399,13 +399,14 @@ bot.hears('📢 অফিশিয়াল চ্যানেল', async (ctx) => 
   });
 });
 
-bot.hears('🛍️ ওবিন শপ (টপ-আপ)', async (ctx) => {
+bot.hears(['🛍️ নূব টপ-আপ (ডায়মন্ড)', '🛍️ ওবিন শপ (টপ-আপ)'], async (ctx) => {
   const settings = db.getSettings();
-  const msg = `💎 <b>OBIN SHOP - ১০০% বিশ্বস্ত ডায়মন্ড শপ</b>\n━━━━━━━━━━━━━━━━━━━━━━\nসবচেয়ে কম মূল্যে ও নিরাপদে ফ্রি ফায়ার ডায়মন্ড ও মেম্বারশিপ টপ-আপ করতে আমাদের অফিশিয়াল শপে ভিজিট করুন:`;
+  const shopUrl = settings.adButtonUrl || 'https://noobtopup.com/';
+  const msg = `💎 <b>NOOB TOP UP - অফিসিয়াল ডায়মন্ড টপ-আপ ওয়েবসাইট</b>\n━━━━━━━━━━━━━━━━━━━━━━\nসবচেয়ে কম মূল্যে ও নিরাপদে ফ্রি ফায়ার ডায়মন্ড, উইকলি ও মান্থলি মেম্বারশিপ টপ-আপ করতে আমাদের অফিশিয়াল ওয়েবসাইট ভিজিট করুন:\n\n🌐 <b>ওয়েবসাইট:</b> https://noobtopup.com/`;
   return ctx.reply(msg, {
     parse_mode: 'HTML',
     ...Markup.inlineKeyboard([
-      [Markup.button.url('🛍️ ওবিন শপে যান', settings.adButtonUrl || 'https://t.me/ObinShop_Bot')]
+      [Markup.button.url('🛍️ NoobTopUp.com ভিজিট করুন 🚀', shopUrl)]
     ])
   });
 });
@@ -534,7 +535,7 @@ bot.action('admin_settings', async (ctx) => {
 🆔 <b>চ্যানেল আইডি:</b> <code>${settings.channelId || 'কানেক্ট করা হয়নি'}</code>
 🔗 <b>ইনভাইট লিংক:</b> <code>${settings.channelInviteLink}</code>
 🔒 <b>ফোর্স সাবস্ক্রিপশন:</b> 🟢 চালু
-🎁 <b>স্পনসর প্রমোশন:</b> 🟢 চালু (ওবিন শপ)
+🎁 <b>স্পনসর প্রমোশন:</b> 🟢 চালু (NoobTopUp.com)
 ━━━━━━━━━━━━━━━━━━━━━━
 💡 <b>নতুন চ্যানেল কানেক্ট করতে:</b>
 আপনার চ্যানেল থেকে যেকোনো একটি পোস্ট কপি করে বা ফরওয়ার্ড করে এই চ্যাটে পাঠিয়ে দিন!`;

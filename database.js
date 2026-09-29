@@ -15,10 +15,10 @@ const defaultData = {
     forceSubEnabled: true,
     adsgramBlockId: process.env.ADSGRAM_BLOCK_ID || 'bot-50561',
     adEnabled: true,
-    adTitle: '🎁 স্পনসরড প্রমোশন (Sponsor Offer)',
-    adText: '💎 সবচেয়ে কমদামে ডায়মন্ড ও মেম্বারশিপ পেতে আমাদের অফিসিয়াল শপ ভিজিট করুন!',
-    adButtonText: '🛍️ ওবিন শপ থেকে ডায়মন্ড নিন',
-    adButtonUrl: 'https://t.me/ObinShop_Bot'
+    adTitle: '🎁 নোব টপ-আপ প্রমোশন (NOOB TOP UP)',
+    adText: '💎 সবচেয়ে কমদামে ডায়মন্ড ও মেম্বারশিপ পেতে আমাদের অফিসিয়াল ওয়েবসাইট ভিজিট করুন!',
+    adButtonText: '🛍️ নূব টপ-আপ (ডায়মন্ড কিনুন)',
+    adButtonUrl: 'https://noobtopup.com/'
   }
 };
 
