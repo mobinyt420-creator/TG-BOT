@@ -57,14 +57,25 @@ async function isUserSubscribed(userId) {
   }
 }
 
-// Register Bot Commands
+// Register Bot Commands (Clean public menu without admin references)
 bot.telegram.setMyCommands([
   { command: 'start', description: '🏠 প্রধান মেনু' },
-  { command: 'help', description: 'ℹ️ সাহায্য ও নির্দেশিকা' },
-  { command: 'files', description: '📁 ফাইল ক্যাটালগ' },
-  { command: 'myid', description: '🆔 আপনার আইডি দেখুন' },
-  { command: 'stats', description: '📊 অ্যানালিটিক্স (এডমিন)' }
+  { command: 'files', description: '📁 ফাইলসমূহ' },
+  { command: 'help', description: 'ℹ️ নিয়ম ও হেল্প' },
+  { command: 'myid', description: '🆔 আপনার টেলিগ্রাম আইডি' }
 ]).catch(() => {});
+
+// --- Helper: Persistent Bottom Menu Keyboard (ইমোজির পাশের বাটন) ---
+function getBottomMenu(isAdminUser = false) {
+  const keyboard = [
+    ['📁 আজকের ফাইলসমূহ', '📢 অফিশিয়াল চ্যানেল'],
+    ['🛍️ ওবিন শপ (টপ-আপ)', 'ℹ️ হেল্প ও নিয়ম']
+  ];
+  if (isAdminUser) {
+    keyboard.push(['👑 এডমিন কন্ট্রোল']);
+  }
+  return Markup.keyboard(keyboard).resize();
+}
 
 // --- Helper: Render Admin Dashboard ---
 async function renderAdminDashboard(ctx) {
@@ -106,11 +117,15 @@ async function renderAdminDashboard(ctx) {
   if (ctx.callbackQuery) {
     await ctx.editMessageText(adminText, { parse_mode: 'HTML', ...keyboard });
   } else {
-    await ctx.reply(adminText, { parse_mode: 'HTML', ...keyboard });
+    await ctx.reply(adminText, {
+      parse_mode: 'HTML',
+      ...keyboard,
+      ...getBottomMenu(true)
+    });
   }
 }
 
-// --- Helper: Render User Home Screen ---
+// --- Helper: Render User Home Screen (১০০% ক্লিন, সাধারণ ইউজারদের জন্য কোনো এডমিন অপশন ছাড়া) ---
 async function renderUserHome(ctx) {
   const user = ctx.from;
   const settings = db.getSettings();
@@ -121,31 +136,37 @@ async function renderUserHome(ctx) {
 
 🤖 <b>${safeBotName}</b> বটে আপনাকে স্বাগতম! ⚡
 
-এখানে আপনি ফ্রি ফায়ারসহ বিভিন্ন গেমের প্রয়োজনীয় সকল কনফিগ, রেজএডিট ও ফাইল কোনো বিরক্তিকর শর্টনার ছাড়াই <b>১০০% ফ্রিতে ও ১ ক্লিকে</b> ডাউনলোড করতে পারবেন।
+এখানে আপনি ইউটিউব ভিডিওর প্রয়োজনীয় সকল ফাইল, কনফিগ ও এপিকে কোনো বিরক্তিকর লিংক শর্টনার বা পপআপ ছাড়াই <b>১০০% ফ্রিতে ও সরাসরি ১ ক্লিকে</b> ডাউনলোড করতে পারবেন।
 
-👇 আপনার পছন্দের অপশনটি বেছে নিন:`;
+👇 নিচের মেনু থেকে আপনার পছন্দের অপশন বেছে নিন:`;
 
-  const userButtons = [
+  const inlineButtons = [
     [
-      Markup.button.callback('📁 আজকের ভিডিও ফাইলসমূহ (ফাইল প্যাক)', 'user_files_list'),
+      Markup.button.callback('📁 আজকের ভিডিও ফাইলসমূহ', 'user_files_list'),
       Markup.button.url('📢 অফিশিয়াল চ্যানেল', settings.channelInviteLink)
     ],
     [
-      Markup.button.url('🛍️ ওবিন শপ (ডায়মন্ড কিনুন)', settings.adButtonUrl),
+      Markup.button.url('🛍️ ওবিন শপ (ডায়মন্ড টপ-আপ)', settings.adButtonUrl),
       Markup.button.callback('ℹ️ কীভাবে ডাউনলোড করবেন?', 'how_to_download')
     ]
   ];
 
+  // সাধারণ ইউজারদের জন্য কোনো এডমিন বাটন থাকবে না। শুধু ওনার টেস্ট করার সময় দেখতে পারবে
   if (isAdmin(user.id)) {
-    userButtons.push([Markup.button.callback('👑 এডমিন প্যানেলে ফিরুন', 'back_to_admin')]);
+    inlineButtons.push([Markup.button.callback('👑 এডমিন প্যানেলে ফিরুন', 'back_to_admin')]);
   }
 
-  const keyboard = Markup.inlineKeyboard(userButtons);
+  const keyboard = Markup.inlineKeyboard(inlineButtons);
+  const bottomMenu = getBottomMenu(isAdmin(user.id));
 
   if (ctx.callbackQuery) {
     await ctx.editMessageText(welcomeText, { parse_mode: 'HTML', ...keyboard });
   } else {
-    await ctx.reply(welcomeText, { parse_mode: 'HTML', ...keyboard });
+    await ctx.reply(welcomeText, {
+      parse_mode: 'HTML',
+      ...keyboard,
+      ...bottomMenu
+    });
   }
 }
 
@@ -156,49 +177,17 @@ bot.start(async (ctx) => {
 
   const payload = ctx.startPayload ? ctx.startPayload.trim() : null;
 
-  // If user clicked a direct file link (e.g. /start file_101)
+  // ১. সরাসরি ফাইল লিংকে ক্লিক করলে (যেমন /start file_101)
   if (payload && payload.startsWith('file_')) {
     return handleFileDownloadRequest(ctx, payload);
   }
 
-  // If user clicked a pack link (e.g. /start pack or /start files)
+  // ২. ফাইল প্যাক লিংকে ক্লিক করলে (যেমন /start files)
   if (payload === 'files' || payload === 'pack') {
     return showUserFilesList(ctx);
   }
 
-  // If user unlocked from Mini App (e.g. /start unlocked_file_102)
-  if (payload && payload.startsWith('unlocked_')) {
-    const fileKey = payload.replace('unlocked_', '');
-    const file = db.getFile(fileKey);
-    if (file) {
-      db.incrementDownload(file.key, user.id);
-      await ctx.reply('🎉 <b>ভিডিও বিজ্ঞাপন সফলভাবে দেখা হয়েছে!</b>\n\nআপনার ফাইলটি আনলক করা হয়েছে, সরাসরি পাঠানো হচ্ছে...', { parse_mode: 'HTML' });
-      return ctx.replyWithDocument(file.telegramFileId, {
-        caption: `✅ <b>ফাইল ডাউনলোড সফল!</b>\n📦 ফাইলের নাম: <code>${escapeHtml(file.fileName)}</code>\n💾 সাইজ: <code>${file.fileSize}</code>\n\n🤖 Powered by @${botInfo.username}`,
-        parse_mode: 'HTML'
-      });
-    } else {
-      return ctx.reply('✅ আপনার ফাইল আনলক হয়েছে! সকল ফাইল দেখতে /files চাপুন।');
-    }
-  }
-
-  // If user redirected back from Adsgram reward (e.g. /start reward_...)
-  if (payload && payload.startsWith('reward_')) {
-    const allFiles = db.getAllFiles();
-    const lastFile = allFiles[0];
-    await ctx.reply('🎉 <b>বিজ্ঞাপন ভেরিফিকেশন সম্পন্ন হয়েছে!</b>\n\nআপনার ফাইলটি সরাসরি পাঠানো হচ্ছে...', { parse_mode: 'HTML' });
-    if (lastFile) {
-      db.incrementDownload(lastFile.key, user.id);
-      return ctx.replyWithDocument(lastFile.telegramFileId, {
-        caption: `✅ <b>ফাইল ডাউনলোড সফল!</b>\n📦 ফাইলের নাম: <code>${escapeHtml(lastFile.fileName)}</code>\n💾 সাইজ: <code>${lastFile.fileSize}</code>\n\n🤖 Powered by @${botInfo.username}`,
-        parse_mode: 'HTML'
-      });
-    } else {
-      return ctx.reply('✅ আপনার রিওয়ার্ড নিশ্চিত হয়েছে! ফাইলসমূহ দেখতে /files চাপুন।');
-    }
-  }
-
-  // Check if Admin or Normal User
+  // ৩. এডমিন হলে এডমিন প্যানেল, সাধারণ ইউজার হলে সাধারণ হোম পেজ
   if (isAdmin(user.id)) {
     return renderAdminDashboard(ctx);
   } else {
@@ -206,17 +195,17 @@ bot.start(async (ctx) => {
   }
 });
 
-// --- File Download Request Handler ---
+// --- File Download Request Handler (Force-Sub Check & Direct Delivery) ---
 async function handleFileDownloadRequest(ctx, fileKey) {
   const user = ctx.from;
   const file = db.getFile(fileKey);
   const settings = db.getSettings();
 
   if (!file) {
-    return ctx.reply('⚠️ দুঃখিত! এই ফাইলটি খুঁজে পাওয়া যায়নি অথবা সার্ভার থেকে মুছে ফেলা হয়েছে।');
+    return ctx.reply('⚠️ দুঃখিত! এই ফাইলটি খুঁজে পাওয়া যায়নি অথবা মুছে ফেলা হয়েছে।');
   }
 
-  // 1. Check Channel Membership
+  // ফোর্স সাবস্ক্রিপশন চেক
   const isMember = await isUserSubscribed(user.id);
 
   if (!isMember) {
@@ -224,138 +213,95 @@ async function handleFileDownloadRequest(ctx, fileKey) {
     const lockedMsg = `🔒 <b>ফাইলটি লক করা রয়েছে!</b>
 ━━━━━━━━━━━━━━━━━━━━━━
 📦 <b>ফাইলের নাম:</b> <code>${safeFileName}</code>
-💾 <b>ফাইলের সাইজ:</b> <code>${file.fileSize}</code>
+💾 <b>সাইজ:</b> <code>${file.fileSize}</code>
 ━━━━━━━━━━━━━━━━━━━━━━
-⚠️ এই ফাইলটি ডাউনলোড করতে আপনাকে আমাদের অফিশিয়াল চ্যানেলে জয়েন থাকতে হবে।
+⚠️ এই ফাইলটি ডাউনলোড করতে আপনাকে আমাদের অফিশিয়াল চ্যানেলে যুক্ত থাকতে হবে।
 
-১. নিচে <b>"📢 চ্যানেলে জয়েন করুন"</b> বাটনে চাপ দিয়ে চ্যানেলে যুক্ত হোন।
-২. জয়েন করার পর <b>"🔄 জয়েন করেছি, আনলক করুন"</b> বাটনে চাপ দিন।`;
+১. নিচে <b>"📢 চ্যানেলে জয়েন করুন"</b> বাটনে চাপ দিয়ে যুক্ত হোন।
+২. এরপর <b>"🔄 জয়েন করেছি, ফাইল ডাউনলোড করুন"</b> বাটনে চাপ দিন।`;
 
     const lockKeyboard = Markup.inlineKeyboard([
       [Markup.button.url('📢 চ্যানেলে জয়েন করুন', settings.channelInviteLink)],
-      [Markup.button.callback('🔄 জয়েন করেছি, আনলক করুন', `verify_${fileKey}`)]
+      [Markup.button.callback('🔄 জয়েন করেছি, ফাইল ডাউনলোড করুন', `verify_${file.key}`)]
     ]);
 
     return ctx.reply(lockedMsg, {
       parse_mode: 'HTML',
-      ...lockKeyboard
+      ...lockKeyboard,
+      ...getBottomMenu(isAdmin(user.id))
     });
   }
 
-  // 2. If already member, show unlock / ad screen
-  await sendUnlockScreen(ctx, file);
+  // চ্যানেলে অলরেডি জয়েন থাকলে সরাসরি ফাইল পাঠিয়ে দেওয়া হবে (নো মিনি অ্যাপ, নো অ্যাড)
+  await deliverFile(ctx, file);
 }
 
-// --- Send Unlock / Ad Screen ---
-async function sendUnlockScreen(ctx, file) {
+// --- Direct 1-Click File Delivery (নো অ্যাড, নো মিনি অ্যাপ - সুপারফাস্ট সিডিএন ডাউনলোড) ---
+async function deliverFile(ctx, file) {
   const settings = db.getSettings();
-  const safeFileName = escapeHtml(file.fileName);
+  db.incrementDownload(file.key, ctx.from.id);
 
-  let unlockMsg = `🔓 <b>আপনার ফাইল প্রস্তুত!</b>
+  const safeFileName = escapeHtml(file.fileName);
+  const caption = `✅ <b>ফাইল ডাউনলোড সম্পন্ন!</b>
 ━━━━━━━━━━━━━━━━━━━━━━
-📦 <b>ফাইল:</b> <code>${safeFileName}</code>
+📦 <b>ফাইলের নাম:</b> <code>${safeFileName}</code>
 💾 <b>সাইজ:</b> <code>${file.fileSize}</code>
 📥 <b>মোট ডাউনলোড:</b> ${file.downloads} বার
-━━━━━━━━━━━━━━━━━━━━━━`;
+━━━━━━━━━━━━━━━━━━━━━━
+⚡ <b>১০০% ডিরেক্ট ফাইল • কোনো লিংক শর্টনার নেই!</b>
+🤖 Powered by @${botInfo.username || 'Mr_PROXYFile_Bot'}`;
 
-  if (settings.adEnabled) {
-    unlockMsg += `\n✨ <b>${escapeHtml(settings.adTitle)}:</b>\n${escapeHtml(settings.adText)}\n━━━━━━━━━━━━━━━━━━━━━━`;
+  const buttons = [];
+  if (settings.adButtonUrl) {
+    buttons.push([Markup.button.url('🛍️ ওবিন শপ (ডায়মন্ড টপ-আপ)', settings.adButtonUrl)]);
   }
-
-  unlockMsg += `\n👇 ফাইলটি আনলক করতে নিচের বাটনে চাপ দিন:`;
-
-  const miniAppBase = 'https://mister-linkhub-app.web.app/';
-  const miniAppUrl = `${miniAppBase}?file=${file.key}&name=${encodeURIComponent(file.fileName)}&size=${encodeURIComponent(file.fileSize)}&blockId=50561`;
-
-  const buttons = [
-    [Markup.button.webApp('🎬 ভিডিও বিজ্ঞাপন দেখুন ও আনলক করুন', miniAppUrl)],
-    [Markup.button.callback('⚡ সাধারণ ১-ক্লিক ডাউনলোড (৩ সে.)', `download_${file.key}`)]
-  ];
-
-  if (settings.adEnabled && settings.adButtonText && settings.adButtonUrl) {
-    buttons.push([Markup.button.url(settings.adButtonText, settings.adButtonUrl)]);
-  }
-
-  buttons.push([Markup.button.callback('🔙 অন্যান্য ফাইলসমূহ দেখুন', 'user_files_list')]);
-
-  const keyboard = Markup.inlineKeyboard(buttons);
+  buttons.push([
+    Markup.button.url('📢 অফিশিয়াল চ্যানেল', settings.channelInviteLink),
+    Markup.button.callback('📁 অন্যান্য ফাইলসমূহ', 'user_files_list')
+  ]);
 
   try {
     if (ctx.callbackQuery) {
-      await ctx.editMessageText(unlockMsg, { parse_mode: 'HTML', ...keyboard });
+      await ctx.replyWithDocument(file.telegramFileId, {
+        caption,
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard(buttons)
+      });
     } else {
-      await ctx.reply(unlockMsg, { parse_mode: 'HTML', ...keyboard });
+      await ctx.replyWithDocument(file.telegramFileId, {
+        caption,
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard(buttons)
+      });
     }
-  } catch (e) {
-    await ctx.reply(unlockMsg, { parse_mode: 'HTML', ...keyboard });
+  } catch (err) {
+    console.error('Failed to deliver document:', err.message);
+    await ctx.reply(`❌ ফাইল পাঠাতে সমস্যা হয়েছে: ${err.message}`);
   }
 }
 
 // --- Verify Button Callback ---
 bot.action(/^verify_(file_\d+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
   const fileKey = ctx.match[1];
   const user = ctx.from;
   const file = db.getFile(fileKey);
 
   if (!file) {
-    return ctx.reply('⚠️ ফাইলটি খুঁজে পাওয়া যায়নি।');
+    return ctx.answerCbQuery('⚠️ ফাইলটি খুঁজে পাওয়া যায়নি।', { show_alert: true });
   }
 
   const isMember = await isUserSubscribed(user.id);
 
   if (!isMember) {
-    return ctx.answerCbQuery('❌ আপনি এখনও চ্যানেলে জয়েন করেননি! অনুগ্রহ করে আগে চ্যানেলে জয়েন করুন।', { show_alert: true });
+    return ctx.answerCbQuery('❌ আপনি এখনও চ্যানেলে জয়েন করেননি! দয়া করে চ্যানেলে জয়েন করে আবার চাপ দিন।', { show_alert: true });
   }
 
-  await ctx.answerCbQuery('✅ ভেরিফিকেশন সফল হয়েছে!');
-  await sendUnlockScreen(ctx, file);
-});
-
-// --- Download File Callback (With 3-Second Demo Ad Verification) ---
-bot.action(/^download_(file_\d+)$/, async (ctx) => {
-  const fileKey = ctx.match[1];
-  const user = ctx.from;
-  const file = db.getFile(fileKey);
-
-  if (!file) {
-    return ctx.reply('⚠️ ফাইলটি পাওয়া যায়নি।');
-  }
-
-  await ctx.answerCbQuery('অ্যাড ভেরিফিকেশন চলছে...');
-
-  // Show a simulated 3-second Rewarded Ad / Verification Countdown
+  await ctx.answerCbQuery('✅ ভেরিফিকেশন সফল! ফাইলটি পাঠানো হচ্ছে...');
   try {
-    await ctx.editMessageText('⏳ <b>স্পনসর অ্যাড ভেরিফিকেশন চলছে... ৩ সেকেন্ড অপেক্ষা করুন...</b>\n\n<i>(ফাইলটি সরাসরি আপনার চ্যাটে পাঠানো হচ্ছে)</i>', { parse_mode: 'HTML' });
+    await ctx.deleteMessage();
   } catch (e) {}
 
-  setTimeout(async () => {
-    // Increment download counter
-    db.incrementDownload(fileKey, user.id);
-
-    try {
-      const safeFileName = escapeHtml(file.fileName);
-      const caption = `✅ <b>ফাইল ডাউনলোড সফল!</b>
-📦 ফাইলের নাম: <code>${safeFileName}</code>
-💾 সাইজ: <code>${file.fileSize}</code>
-
-🤖 Powered by @${botInfo.username}`;
-
-      await ctx.replyWithDocument(file.telegramFileId, {
-        caption,
-        parse_mode: 'HTML'
-      });
-
-      // Quick return button
-      await ctx.reply('🎉 ডাউনলোড সম্পন্ন হয়েছে! অন্য কোনো ফাইল নিতে নিচের বাটনে চাপ দিন:', Markup.inlineKeyboard([
-        [Markup.button.callback('📁 অন্যান্য ফাইলসমূহ দেখুন', 'user_files_list')],
-        [Markup.button.url('🛍️ ওবিন শপ (ডায়মন্ড কিনুন)', db.getSettings().adButtonUrl)]
-      ]));
-    } catch (err) {
-      console.error('Failed to send document:', err.message);
-      await ctx.reply(`❌ ফাইল পাঠাতে সমস্যা হয়েছে: ${err.message}`);
-    }
-  }, 2500);
+  await deliverFile(ctx, file);
 });
 
 // --- User Action: Show All Files in Multi-File Pack ---
@@ -367,6 +313,7 @@ bot.action('user_files_list', async (ctx) => {
 async function showUserFilesList(ctx) {
   const files = db.getAllFiles();
   const settings = db.getSettings();
+  const user = ctx.from;
 
   if (files.length === 0) {
     const emptyText = `📁 <b>ফাইল কালেকশন</b>\n━━━━━━━━━━━━━━━━━━━━━━\nবর্তমানে কোনো ফাইল আপলোড করা নেই। শীঘ্রই নতুন ভিডিওর সাথে ফাইল যুক্ত করা হবে!`;
@@ -376,7 +323,7 @@ async function showUserFilesList(ctx) {
     if (ctx.callbackQuery) {
       return ctx.editMessageText(emptyText, { parse_mode: 'HTML', ...emptyKeyboard });
     } else {
-      return ctx.reply(emptyText, { parse_mode: 'HTML', ...emptyKeyboard });
+      return ctx.reply(emptyText, { parse_mode: 'HTML', ...emptyKeyboard, ...getBottomMenu(isAdmin(user.id)) });
     }
   }
 
@@ -388,12 +335,12 @@ async function showUserFilesList(ctx) {
 
   const listText = `🎬 <b>আজকের ও সাম্প্রতিক ভিডিওর ফাইলসমূহ:</b>
 ━━━━━━━━━━━━━━━━━━━━━━
-নিচের তালিকা থেকে আপনার প্রয়োজনীয় ফাইলটিতে ক্লিক করে সরাসরি আনলক ও ডাউনলোড করে নিন:`;
+নিচের তালিকা থেকে আপনার প্রয়োজনীয় ফাইলটিতে ক্লিক করে সরাসরি ডাউনলোড করে নিন:`;
 
   if (ctx.callbackQuery) {
     await ctx.editMessageText(listText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
   } else {
-    await ctx.reply(listText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons) });
+    await ctx.reply(listText, { parse_mode: 'HTML', ...Markup.inlineKeyboard(buttons), ...getBottomMenu(isAdmin(user.id)) });
   }
 }
 
@@ -407,12 +354,11 @@ bot.action('how_to_download', async (ctx) => {
   await ctx.answerCbQuery();
   const howText = `ℹ️ <b>কীভাবে ফাইল ডাউনলোড করবেন?</b>
 ━━━━━━━━━━━━━━━━━━━━━━
-১. তালিকা থেকে আপনার পছন্দের ফাইলটিতে চাপ দিন।
-২. আমাদের অফিসিয়াল চ্যানেলে জয়েন না থাকলে <b>"চ্যানেলে জয়েন করুন"</b> বাটনে চাপ দিয়ে যুক্ত হোন।
-৩. এরপর <b>"ভেরিফাই করুন"</b> চাপলেই ফাইলটি আনলক হয়ে যাবে।
-৪. <b>"ডাউনলোড করুন"</b> চাপলে কয়েক সেকেন্ডের মধ্যে ফাইলটি সরাসরি আপনার চ্যাটে চলে আসবে!
+১. তালিকা থেকে বা ইউটিউব ভিডিওর লিংক থেকে ফাইলে চাপ দিন।
+২. আমাদের অফিসিয়াল চ্যানেলে জয়েন না থাকলে <b>"📢 চ্যানেলে জয়েন করুন"</b> বাটনে চাপ দিয়ে যুক্ত হোন।
+৩. এরপর <b>"🔄 জয়েন করেছি, ফাইল ডাউনলোড করুন"</b> চাপলেই ফাইলটি সরাসরি আপনার চ্যাটে চলে আসবে!
 
-কোনো শর্টনারের ঝামেলা নেই, কোনো আজেবাজে পপআপ নেই! 🚀`;
+কোনো বিরক্তিকর শর্টনারের ঝামেলা নেই, কোনো পপআপ নেই! 🚀`;
 
   await ctx.editMessageText(howText, {
     parse_mode: 'HTML',
@@ -428,7 +374,7 @@ bot.action('back_to_home', async (ctx) => {
 });
 
 bot.action('view_as_user', async (ctx) => {
-  await ctx.answerCbQuery('ইউজার ভিউ চালু করা হয়েছে');
+  await ctx.answerCbQuery('ইউজার ভিউ প্রিভিউ');
   await renderUserHome(ctx);
 });
 
@@ -436,6 +382,54 @@ bot.action('back_to_admin', async (ctx) => {
   await ctx.answerCbQuery();
   await renderAdminDashboard(ctx);
 });
+
+// --- Persistent Bottom Menu Keyboard Hears Handlers ---
+bot.hears('📁 আজকের ফাইলসমূহ', async (ctx) => {
+  return showUserFilesList(ctx);
+});
+
+bot.hears('📢 অফিশিয়াল চ্যানেল', async (ctx) => {
+  const settings = db.getSettings();
+  const msg = `📢 <b>আমাদের অফিসিয়াল টেলিগ্রাম চ্যানেল:</b>\n\nফ্রি ফায়ারের নতুন সব কনফিগ, এপিকে ও এক্সক্লুসিভ ফাইল সবার আগে পেতে যুক্ত হোন! ⚡`;
+  return ctx.reply(msg, {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard([
+      [Markup.button.url('👉 চ্যানেলে জয়েন করুন', settings.channelInviteLink)]
+    ])
+  });
+});
+
+bot.hears('🛍️ ওবিন শপ (টপ-আপ)', async (ctx) => {
+  const settings = db.getSettings();
+  const msg = `💎 <b>OBIN SHOP - ১০০% বিশ্বস্ত ডায়মন্ড শপ</b>\n━━━━━━━━━━━━━━━━━━━━━━\nসবচেয়ে কম মূল্যে ও নিরাপদে ফ্রি ফায়ার ডায়মন্ড ও মেম্বারশিপ টপ-আপ করতে আমাদের অফিশিয়াল শপে ভিজিট করুন:`;
+  return ctx.reply(msg, {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard([
+      [Markup.button.url('🛍️ ওবিন শপে যান', settings.adButtonUrl || 'https://t.me/ObinShop_Bot')]
+    ])
+  });
+});
+
+bot.hears('ℹ️ হেল্প ও নিয়ম', async (ctx) => {
+  const helpText = `ℹ️ <b>Mr. PROXY File Locker - হেল্প মেনু</b>
+━━━━━━━━━━━━━━━━━━━━━━
+<b>ফাইল ডাউনলোড করার নিয়ম:</b>
+• ইউটিউব ডেসক্রিপশন থেকে দেওয়া লিংকে ক্লিক করুন।
+• চ্যানেল সাবস্ক্রাইব না থাকলে চ্যানেলে যুক্ত হোন।
+• ১ ক্লিকে কোনো শর্টনার ছাড়াই সরাসরি ফাইল ডাউনলোড করুন!
+
+<b>সাপোর্ট ও যোগাযোগ:</b>
+• যেকোনো প্রয়োজনে যোগাযোগ করুন: @mrmobin9`;
+
+  return ctx.reply(helpText, { parse_mode: 'HTML' });
+});
+
+bot.hears('👑 এডমিন কন্ট্রোল', async (ctx) => {
+  if (isAdmin(ctx.from.id)) {
+    return renderAdminDashboard(ctx);
+  }
+});
+
 
 // --- Admin Analytics & Live User Tracking ---
 bot.action('admin_analytics', async (ctx) => {
