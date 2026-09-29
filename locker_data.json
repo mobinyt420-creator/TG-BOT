@@ -1,0 +1,48 @@
+{
+  "lastFileNumber": 102,
+  "files": {
+    "file_101": {
+      "key": "file_101",
+      "telegramFileId": "BQACAgUAAxkBAAMnarpBqQHv-PzmqGCezuq6FlwGeI8AAtUiAAJ7ndFV4_2LT3lKrDc9BA",
+      "fileName": "NoobTopup_v1.0.apk",
+      "fileSize": "3.59 MB",
+      "rawSize": 3759533,
+      "mimeType": "application/octet-stream",
+      "downloads": 7,
+      "createdAt": "2026-09-28T10:29:21.146Z"
+    },
+    "file_102": {
+      "key": "file_102",
+      "telegramFileId": "BQACAgUAAxkBAAM6arpIwN1ou1E4z1y4J6KxOQxP9zsAAlUjAAJ7ndlV8HUQzp3XPRE9BA",
+      "fileName": "NoobTopup_v1.0.apk",
+      "fileSize": "3.59 MB",
+      "rawSize": 3759533,
+      "mimeType": "application/octet-stream",
+      "downloads": 3,
+      "createdAt": "2026-09-28T10:59:35.545Z"
+    }
+  },
+  "users": {
+    "7553569630": {
+      "id": "7553569630",
+      "name": "X Mobin",
+      "username": "@mrmobin9",
+      "joinedAt": "2026-09-28T10:00:42.603Z",
+      "downloadsCount": 1,
+      "lastActive": "2026-09-28T10:29:39.465Z"
+    }
+  },
+  "settings": {
+    "adminChatId": "7553569630",
+    "channelId": "",
+    "channelTitle": "অফিসিয়াল চ্যানেল",
+    "channelInviteLink": "https://t.me/+0Pio7JsMT_s5MTZl",
+    "forceSubEnabled": true,
+    "adsgramBlockId": "bot-50561",
+    "adEnabled": true,
+    "adTitle": "🎁 স্পনসরড প্রমোশন (Sponsor Offer)",
+    "adText": "💎 সবচেয়ে কমদামে ডায়মন্ড ও মেম্বারশিপ পেতে আমাদের অফিসিয়াল শপ ভিজিট করুন!",
+    "adButtonText": "🛍️ ওবিন শপ থেকে ডায়মন্ড নিন",
+    "adButtonUrl": "https://t.me/ObinShop_Bot"
+  }
+}
