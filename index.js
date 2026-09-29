@@ -756,19 +756,37 @@ bot.telegram.getMe().then(me => {
   console.error('getMe error:', err.message);
 });
 
-bot.launch().then(() => {
-  console.log('✅ Telegram Polling is ACTIVE and listening for messages!');
-}).catch(err => {
-  console.error('❌ Failed to launch Proxy File Locker Bot:', err.message);
-});
+let isRunning = true;
+
+async function startPollingWithRetry(maxRetries = 15, delayMs = 4000) {
+  for (let attempt = 1; attempt <= maxRetries && isRunning; attempt++) {
+    try {
+      console.log(`🚀 Starting Telegram polling (Attempt ${attempt}/${maxRetries})...`);
+      await bot.telegram.deleteWebhook({ drop_pending_updates: false }).catch(() => {});
+      await bot.launch();
+      console.log('✅ Telegram Polling is active and running!');
+      break;
+    } catch (err) {
+      console.error(`❌ Polling attempt ${attempt} error:`, err.message);
+      if (attempt < maxRetries && isRunning) {
+        console.log(`⏳ Waiting ${delayMs / 1000}s for previous instance handover...`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+  }
+}
+
+startPollingWithRetry();
 
 // Graceful stop
 process.once('SIGINT', () => {
+  isRunning = false;
   server.close();
-  bot.stop('SIGINT');
+  try { bot.stop('SIGINT'); } catch (e) {}
 });
 process.once('SIGTERM', () => {
+  isRunning = false;
   server.close();
-  bot.stop('SIGTERM');
+  try { bot.stop('SIGTERM'); } catch (e) {}
 });
 
