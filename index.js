@@ -41,21 +41,27 @@ bot.catch((err, ctx) => {
   console.error(`Telegram Bot Error (${ctx ? ctx.updateType : 'unknown'}):`, err.message);
 });
 
-// Helper to check channel membership
+// Helper to check channel membership (কাউন্টিং সিস্টেম)
 async function isUserSubscribed(userId) {
   const settings = db.getSettings();
-  if (!settings.forceSubEnabled || !settings.channelId) {
-    return true; // No restriction if channel not set
+  if (!settings.forceSubEnabled) {
+    return true; // No restriction if force-sub disabled
+  }
+
+  // If channelId is not set yet, files stay locked until admin connects channel
+  if (!settings.channelId) {
+    return false;
   }
 
   try {
     const member = await bot.telegram.getChatMember(settings.channelId, userId);
     return ['creator', 'administrator', 'member', 'restricted'].includes(member.status);
   } catch (err) {
-    console.error(`Membership check failed for user ${userId}:`, err.message);
+    console.error(`Membership check failed for user ${userId} in ${settings.channelId}:`, err.message);
     return false;
   }
 }
+
 
 // Register Bot Commands (Clean public menu without admin references)
 bot.telegram.setMyCommands([
@@ -171,23 +177,32 @@ async function renderUserHome(ctx) {
 }
 
 // --- /start Handler ---
+// Rate limiting map for anti-spam on verification clicks
+const verifyCooldown = new Map();
+
+// --- /start Handler ---
 bot.start(async (ctx) => {
   const user = ctx.from;
   db.logUser(user);
 
   const payload = ctx.startPayload ? ctx.startPayload.trim() : null;
 
-  // ১. সরাসরি ফাইল লিংকে ক্লিক করলে (যেমন /start file_101)
+  // ১. ব্যাচ ফাইল লিংকে ক্লিক করলে (যেমন /start batch_101_102)
+  if (payload && payload.startsWith('batch_')) {
+    return handleBatchDownloadRequest(ctx, payload);
+  }
+
+  // ২. একক ফাইল লিংকে ক্লিক করলে (যেমন /start file_101)
   if (payload && payload.startsWith('file_')) {
     return handleFileDownloadRequest(ctx, payload);
   }
 
-  // ২. ফাইল প্যাক লিংকে ক্লিক করলে (যেমন /start files)
+  // ৩. ফাইল প্যাক লিংকে ক্লিক করলে (যেমন /start files)
   if (payload === 'files' || payload === 'pack') {
     return showUserFilesList(ctx);
   }
 
-  // ৩. এডমিন হলে এডমিন প্যানেল, সাধারণ ইউজার হলে সাধারণ হোম পেজ
+  // ৪. এডমিন হলে এডমিন প্যানেল, সাধারণ ইউজার হলে সাধারণ হোম পেজ
   if (isAdmin(user.id)) {
     return renderAdminDashboard(ctx);
   } else {
@@ -195,45 +210,157 @@ bot.start(async (ctx) => {
   }
 });
 
+// --- Batch File Download Request Handler (একাধিক ফাইলের ১টি লিংক) ---
+async function handleBatchDownloadRequest(ctx, batchPayload) {
+  const user = ctx.from;
+  const rawParts = batchPayload.replace(/^batch_/, '').split(/[_-]+/);
+  const fileKeys = [];
+  for (let i = 0; i < rawParts.length; i++) {
+    const part = rawParts[i];
+    if (part === 'file' && rawParts[i + 1]) {
+      fileKeys.push(`file_${rawParts[i + 1]}`);
+      i++;
+    } else if (/^\d+$/.test(part)) {
+      fileKeys.push(`file_${part}`);
+    }
+  }
+
+  const validFiles = fileKeys.map(k => db.getFile(k)).filter(Boolean);
+  if (validFiles.length === 0) {
+    return ctx.reply('⚠️ দুঃখিত! এই প্যাকেজের ফাইলগুলো খুঁজে পাওয়া যায়নি অথবা মুছে ফেলা হয়েছে।');
+  }
+
+  // ফোর্স সাবস্ক্রিপশন ও টাস্ক চেক
+  const isMember = await isUserSubscribed(user.id);
+  if (!isMember) {
+    return sendBatchLockScreen(ctx, validFiles, batchPayload, false);
+  }
+
+  await deliverBatchFiles(ctx, validFiles);
+}
+
+// --- Send Batch Lock Screen ---
+async function sendBatchLockScreen(ctx, files, batchPayload, isPreview = false) {
+  const settings = db.getSettings();
+  const fileListStr = files.map((f, i) => `${i + 1}. <b>${escapeHtml(f.fileName)}</b> (<code>${f.fileSize}</code>)`).join('\n');
+
+  const lockMsg = `🔒 <b>ফাইল প্যাকেজটি লক করা রয়েছে! (মোট ${files.length}টি ফাইল)</b>
+━━━━━━━━━━━━━━━━━━━━━━
+📦 <b>প্যাকেজের অন্তর্ভুক্ত ফাইলসমূহ:</b>
+${fileListStr}
+━━━━━━━━━━━━━━━━━━━━━━
+⚠️ এই ফাইলগুলো ডাউনলোড করতে আপনাকে নিচের টাস্কগুলো সম্পন্ন করতে হবে:
+
+১️⃣ <b>টেলিগ্রাম চ্যানেলে জয়েন করুন</b> (বাধ্যতামূলক ✅)
+${settings.extraTaskEnabled ? `২️⃣ <b>${escapeHtml(settings.extraTaskTitle || 'ইউটিউব চ্যানেল সাবস্ক্রাইব করুন')}</b> 🔴\n` : ''}
+👇 নিচের বাটনগুলোতে ক্লিক করে টাস্ক সম্পন্ন করে <b>"সকল ফাইল আনলক করুন"</b> বাটনে চাপ দিন:`;
+
+  const buttons = [
+    [Markup.button.url('📢 ১. টেলিগ্রাম চ্যানেলে জয়েন করুন', settings.channelInviteLink)]
+  ];
+
+  if (settings.extraTaskEnabled && settings.extraTaskUrl) {
+    buttons.push([
+      Markup.button.url(`🔴 ২. ${settings.extraTaskTitle || 'ইউটিউব চ্যানেল সাবস্ক্রাইব করুন'}`, settings.extraTaskUrl)
+    ]);
+  }
+
+  buttons.push([
+    Markup.button.callback('🔄 ৩. টাস্ক সম্পন্ন করেছি, সকল ফাইল আনলক করুন 🔓', isPreview ? 'test_verify_done' : `vbatch_${batchPayload}`)
+  ]);
+
+  if (isPreview) {
+    buttons.push([Markup.button.callback('🔙 এডমিন সেটিংসে ফিরুন', 'admin_settings')]);
+  }
+
+  const keyboard = Markup.inlineKeyboard(buttons);
+
+  if (ctx.callbackQuery) {
+    return ctx.editMessageText(lockMsg, { parse_mode: 'HTML', ...keyboard });
+  } else {
+    return ctx.reply(lockMsg, {
+      parse_mode: 'HTML',
+      ...keyboard,
+      ...getBottomMenu(isAdmin(ctx.from.id))
+    });
+  }
+}
+
+// --- Deliver Batch Files ---
+async function deliverBatchFiles(ctx, files) {
+  await ctx.reply(`🎉 <b>ভেরিফিকেশন সফল!</b> আপনার প্যাকেজের মোট <b>${files.length}</b>টি ফাইল পাঠানো হচ্ছে...`, { parse_mode: 'HTML' });
+  for (const file of files) {
+    await deliverFile(ctx, file);
+    await new Promise(r => setTimeout(r, 600));
+  }
+}
+
 // --- File Download Request Handler (Force-Sub Check & Direct Delivery) ---
 async function handleFileDownloadRequest(ctx, fileKey) {
   const user = ctx.from;
   const file = db.getFile(fileKey);
-  const settings = db.getSettings();
 
   if (!file) {
     return ctx.reply('⚠️ দুঃখিত! এই ফাইলটি খুঁজে পাওয়া যায়নি অথবা মুছে ফেলা হয়েছে।');
   }
 
-  // ফোর্স সাবস্ক্রিপশন চেক
+  // ফোর্স সাবস্ক্রিপশন ও টাস্ক চেক
   const isMember = await isUserSubscribed(user.id);
 
   if (!isMember) {
-    const safeFileName = escapeHtml(file.fileName);
-    const lockedMsg = `🔒 <b>ফাইলটি লক করা রয়েছে!</b>
+    return sendLockScreen(ctx, file, false);
+  }
+
+  // চ্যানেলে অলরেডি জয়েন থাকলে সরাসরি ১-ক্লিকে ফাইল ডেলিভারি
+  await deliverFile(ctx, file);
+}
+
+// --- Send Task / Lock Screen (কাউন্টিং ও আনকাউন্টিং টাস্ক সিস্টেম) ---
+async function sendLockScreen(ctx, file, isPreview = false) {
+  const settings = db.getSettings();
+  const safeFileName = escapeHtml(file.fileName);
+
+  const lockMsg = `🔒 <b>ফাইলটি লক করা রয়েছে! ডাউনলোড করতে টাস্ক পূরণ করুন:</b>
 ━━━━━━━━━━━━━━━━━━━━━━
 📦 <b>ফাইলের নাম:</b> <code>${safeFileName}</code>
 💾 <b>সাইজ:</b> <code>${file.fileSize}</code>
+📥 <b>মোট ডাউনলোড:</b> ${file.downloads || 0} বার
 ━━━━━━━━━━━━━━━━━━━━━━
-⚠️ এই ফাইলটি ডাউনলোড করতে আপনাকে আমাদের অফিশিয়াল চ্যানেলে যুক্ত থাকতে হবে।
+⚠️ এই ফাইলটি ডাউনলোড করতে আপনাকে নিচের টাস্কগুলো সম্পন্ন করতে হবে:
 
-১. নিচে <b>"📢 চ্যানেলে জয়েন করুন"</b> বাটনে চাপ দিয়ে যুক্ত হোন।
-২. এরপর <b>"🔄 জয়েন করেছি, ফাইল ডাউনলোড করুন"</b> বাটনে চাপ দিন।`;
+১️⃣ <b>টেলিগ্রাম চ্যানেলে জয়েন করুন</b> (বাধ্যতামূলক ✅)
+${settings.extraTaskEnabled ? `২️⃣ <b>${escapeHtml(settings.extraTaskTitle || 'ইউটিউব চ্যানেল সাবস্ক্রাইব করুন')}</b> 🔴\n` : ''}
+👇 নিচের বাটনগুলোতে ক্লিক করে টাস্ক সম্পন্ন করে <b>"ফাইল আনলক করুন"</b> বাটনে চাপ দিন:`;
 
-    const lockKeyboard = Markup.inlineKeyboard([
-      [Markup.button.url('📢 চ্যানেলে জয়েন করুন', settings.channelInviteLink)],
-      [Markup.button.callback('🔄 জয়েন করেছি, ফাইল ডাউনলোড করুন', `verify_${file.key}`)]
+  const buttons = [
+    [Markup.button.url('📢 ১. টেলিগ্রাম চ্যানেলে জয়েন করুন', settings.channelInviteLink)]
+  ];
+
+  if (settings.extraTaskEnabled && settings.extraTaskUrl) {
+    buttons.push([
+      Markup.button.url(`🔴 ২. ${settings.extraTaskTitle || 'ইউটিউব চ্যানেল সাবস্ক্রাইব করুন'}`, settings.extraTaskUrl)
     ]);
-
-    return ctx.reply(lockedMsg, {
-      parse_mode: 'HTML',
-      ...lockKeyboard,
-      ...getBottomMenu(isAdmin(user.id))
-    });
   }
 
-  // চ্যানেলে অলরেডি জয়েন থাকলে সরাসরি ফাইল পাঠিয়ে দেওয়া হবে (নো মিনি অ্যাপ, নো অ্যাড)
-  await deliverFile(ctx, file);
+  buttons.push([
+    Markup.button.callback('🔄 ৩. টাস্ক সম্পন্ন করেছি, ফাইল আনলক করুন 🔓', isPreview ? 'test_verify_done' : `verify_${file.key}`)
+  ]);
+
+  if (isPreview) {
+    buttons.push([Markup.button.callback('🔙 এডমিন সেটিংসে ফিরুন', 'admin_settings')]);
+  }
+
+  const keyboard = Markup.inlineKeyboard(buttons);
+
+  if (ctx.callbackQuery) {
+    return ctx.editMessageText(lockMsg, { parse_mode: 'HTML', ...keyboard });
+  } else {
+    return ctx.reply(lockMsg, {
+      parse_mode: 'HTML',
+      ...keyboard,
+      ...getBottomMenu(isAdmin(ctx.from.id))
+    });
+  }
 }
 
 // --- Direct 1-Click File Delivery (নো অ্যাড, নো মিনি অ্যাপ - সুপারফাস্ট সিডিএন ডাউনলোড) ---
@@ -260,49 +387,138 @@ async function deliverFile(ctx, file) {
     Markup.button.callback('📁 অন্যান্য ফাইলসমূহ', 'user_files_list')
   ]);
 
+  const deliverOptions = {
+    caption,
+    parse_mode: 'HTML',
+    protect_content: Boolean(settings.protectContent),
+    ...Markup.inlineKeyboard(buttons)
+  };
+
   try {
-    if (ctx.callbackQuery) {
-      await ctx.replyWithDocument(file.telegramFileId, {
-        caption,
-        parse_mode: 'HTML',
-        ...Markup.inlineKeyboard(buttons)
-      });
-    } else {
-      await ctx.replyWithDocument(file.telegramFileId, {
-        caption,
-        parse_mode: 'HTML',
-        ...Markup.inlineKeyboard(buttons)
-      });
-    }
+    await ctx.replyWithDocument(file.telegramFileId, deliverOptions);
   } catch (err) {
     console.error('Failed to deliver document:', err.message);
     await ctx.reply(`❌ ফাইল পাঠাতে সমস্যা হয়েছে: ${err.message}`);
   }
 }
 
-// --- Verify Button Callback ---
+// --- Verify Button Callback (একক ফাইল) ---
 bot.action(/^verify_(file_\d+)$/, async (ctx) => {
   const fileKey = ctx.match[1];
   const user = ctx.from;
   const file = db.getFile(fileKey);
+  const settings = db.getSettings();
+
+  // Rate limiting / anti-spam cooldown
+  const lastClick = verifyCooldown.get(user.id) || 0;
+  const now = Date.now();
+  if (now - lastClick < 2500) {
+    return ctx.answerCbQuery('⏳ অনুগ্রহ করে ২ সেকেন্ড অপেক্ষা করুন, চেক হচ্ছে...', { show_alert: false });
+  }
+  verifyCooldown.set(user.id, now);
 
   if (!file) {
     return ctx.answerCbQuery('⚠️ ফাইলটি খুঁজে পাওয়া যায়নি।', { show_alert: true });
   }
 
+  // If channelId is not set in database yet
+  if (!settings.channelId) {
+    if (isAdmin(user.id)) {
+      return ctx.answerCbQuery('⚠️ এডমিন ভাই, আপনি এখনও চ্যানেলের আইডি সেট করেননি! চ্যানেল থেকে একটি পোস্ট বটে Forward করুন।', { show_alert: true });
+    } else {
+      // Allow download if admin hasn't configured channel yet
+      await ctx.answerCbQuery('✅ ফাইলটি পাঠানো হচ্ছে...');
+      try { await ctx.deleteMessage(); } catch (e) {}
+      return deliverFile(ctx, file);
+    }
+  }
+
   const isMember = await isUserSubscribed(user.id);
 
   if (!isMember) {
-    return ctx.answerCbQuery('❌ আপনি এখনও চ্যানেলে জয়েন করেননি! দয়া করে চ্যানেলে জয়েন করে আবার চাপ দিন।', { show_alert: true });
+    if (isAdmin(user.id)) {
+      try {
+        await bot.telegram.getChatMember(settings.channelId, botInfo.id || (await bot.telegram.getMe()).id);
+      } catch (err) {
+        return ctx.answerCbQuery('⚠️ বট আপনার চ্যানেলে Admin হিসেবে যুক্ত নেই! চ্যানেলে গিয়ে বটকে Admin করুন।', { show_alert: true });
+      }
+    }
+    return ctx.answerCbQuery('❌ আপনি এখনও ১ নম্বর টেলিগ্রাম চ্যানেলে জয়েন করেননি! দয়া করে চ্যানেলে জয়েন করে আবার চাপ দিন।', { show_alert: true });
   }
 
-  await ctx.answerCbQuery('✅ ভেরিফিকেশন সফল! ফাইলটি পাঠানো হচ্ছে...');
+  await ctx.answerCbQuery('🎉 অসাধারণ! সকল টাস্ক ভেরিফিকেশন সফল হয়েছে!');
   try {
     await ctx.deleteMessage();
   } catch (e) {}
 
   await deliverFile(ctx, file);
 });
+
+// --- Verify Button Callback (ব্যাচ ফাইলসমূহ) ---
+bot.action(/^vbatch_(.+)$/, async (ctx) => {
+  const batchPayload = ctx.match[1];
+  const user = ctx.from;
+  const settings = db.getSettings();
+
+  // Rate limiting / anti-spam cooldown
+  const lastClick = verifyCooldown.get(user.id) || 0;
+  const now = Date.now();
+  if (now - lastClick < 2500) {
+    return ctx.answerCbQuery('⏳ অনুগ্রহ করে ২ সেকেন্ড অপেক্ষা করুন, চেক হচ্ছে...', { show_alert: false });
+  }
+  verifyCooldown.set(user.id, now);
+
+  const rawParts = batchPayload.replace(/^batch_/, '').split(/[_-]+/);
+  const fileKeys = [];
+  for (let i = 0; i < rawParts.length; i++) {
+    const part = rawParts[i];
+    if (part === 'file' && rawParts[i + 1]) {
+      fileKeys.push(`file_${rawParts[i + 1]}`);
+      i++;
+    } else if (/^\d+$/.test(part)) {
+      fileKeys.push(`file_${part}`);
+    }
+  }
+
+  const validFiles = fileKeys.map(k => db.getFile(k)).filter(Boolean);
+  if (validFiles.length === 0) {
+    return ctx.answerCbQuery('⚠️ ফাইলগুলো খুঁজে পাওয়া যায়নি।', { show_alert: true });
+  }
+
+  if (!settings.channelId) {
+    if (isAdmin(user.id)) {
+      return ctx.answerCbQuery('⚠️ এডমিন ভাই, আপনি এখনও চ্যানেলের আইডি সেট করেননি! চ্যানেল থেকে একটি পোস্ট বটে Forward করুন।', { show_alert: true });
+    } else {
+      await ctx.answerCbQuery('✅ ফাইলগুলো পাঠানো হচ্ছে...');
+      try { await ctx.deleteMessage(); } catch (e) {}
+      return deliverBatchFiles(ctx, validFiles);
+    }
+  }
+
+  const isMember = await isUserSubscribed(user.id);
+  if (!isMember) {
+    if (isAdmin(user.id)) {
+      try {
+        await bot.telegram.getChatMember(settings.channelId, botInfo.id || (await bot.telegram.getMe()).id);
+      } catch (err) {
+        return ctx.answerCbQuery('⚠️ বট আপনার চ্যানেলে Admin হিসেবে যুক্ত নেই! চ্যানেলে গিয়ে বটকে Admin করুন।', { show_alert: true });
+      }
+    }
+    return ctx.answerCbQuery('❌ আপনি এখনও টেলিগ্রাম চ্যানেলে জয়েন করেননি! চ্যানেলে জয়েন করে আবার চাপ দিন।', { show_alert: true });
+  }
+
+  await ctx.answerCbQuery('🎉 অসাধারণ! সকল টাস্ক ভেরিফিকেশন সফল হয়েছে!');
+  try { await ctx.deleteMessage(); } catch (e) {}
+  return deliverBatchFiles(ctx, validFiles);
+});
+
+bot.action('test_verify_done', async (ctx) => {
+  await ctx.answerCbQuery('🧪 টেস্ট মোড: টাস্ক সফলভাবে সম্পন্ন দেখানো হচ্ছে!');
+  const allFiles = db.getAllFiles();
+  const sampleFile = allFiles[0] || { key: 'file_test', fileName: 'FreeFire_Config_VIP.zip', fileSize: '4.2 MB', downloads: 128 };
+  return deliverFile(ctx, sampleFile);
+});
+
 
 // --- User Action: Show All Files in Multi-File Pack ---
 bot.action('user_files_list', async (ctx) => {
@@ -524,27 +740,89 @@ bot.action('admin_broadcast_help', async (ctx) => {
   });
 });
 
-// --- Admin: Settings ---
-bot.action('admin_settings', async (ctx) => {
-  await ctx.answerCbQuery();
+// --- Admin: Settings Panel (ইন্টারেক্টিভ চ্যানেল ও টাস্ক কনফিগারেশন) ---
+async function renderAdminSettings(ctx) {
   const settings = db.getSettings();
 
-  const text = `⚙️ <b>চ্যানেল ও প্রমোশন সেটিংস:</b>
+  const text = `⚙️ <b>চ্যানেল ও টাস্ক সেটিংস ড্যাশবোর্ড:</b>
 ━━━━━━━━━━━━━━━━━━━━━━
-📢 <b>সংযুক্ত চ্যানেল:</b> ${escapeHtml(settings.channelTitle)}
-🆔 <b>চ্যানেল আইডি:</b> <code>${settings.channelId || 'কানেক্ট করা হয়নি'}</code>
+📢 <b>সংযুক্ত টেলিগ্রাম চ্যানেল:</b> ${escapeHtml(settings.channelTitle)}
+🆔 <b>চ্যানেল আইডি:</b> <code>${settings.channelId || 'কানেক্ট করা হয়নি ⚠️'}</code>
 🔗 <b>ইনভাইট লিংক:</b> <code>${settings.channelInviteLink}</code>
-🔒 <b>ফোর্স সাবস্ক্রিপশন:</b> 🟢 চালু
-🎁 <b>স্পনসর প্রমোশন:</b> 🟢 চালু (NoobTopUp.com)
+🔒 <b>ফোর্স সাব (কাউন্টিং টাস্ক):</b> ${settings.forceSubEnabled ? '🟢 চালু' : '🔴 বন্ধ'}
 ━━━━━━━━━━━━━━━━━━━━━━
-💡 <b>নতুন চ্যানেল কানেক্ট করতে:</b>
-আপনার চ্যানেল থেকে যেকোনো একটি পোস্ট কপি করে বা ফরওয়ার্ড করে এই চ্যাটে পাঠিয়ে দিন!`;
+🔴 <b>ইউটিউব টাস্ক (আনকাউন্টিং):</b> ${settings.extraTaskEnabled ? '🟢 চালু' : '🔴 বন্ধ'}
+📝 <b>টাস্ক টাইটেল:</b> ${escapeHtml(settings.extraTaskTitle || 'ইউটিউব চ্যানেল সাবস্ক্রাইব করুন')}
+🔗 <b>ইউটিউব লিংক:</b> <code>${settings.extraTaskUrl || 'সেট করা হয়নি'}</code>
+━━━━━━━━━━━━━━━━━━━━━━
+🛡️ <b>কনটেন্ট প্রোটেকশন (ফরওয়ার্ড/সেভ ব্লক):</b> ${settings.protectContent ? '🟢 চালু' : '🔴 বন্ধ'}
+💎 <b>টপ-আপ ওয়েবসাইট:</b> NoobTopUp.com
+━━━━━━━━━━━━━━━━━━━━━━
+💡 <b>কমান্ড দিয়ে পরিবর্তনের নিয়ম:</b>
+• চ্যানেল সেট করতে: <code>/setchannel @username</code> (বা চ্যানেল পোস্ট Forward করুন)
+• ইনভাইট লিংক: <code>/setinvite https://t.me/+xxxx</code>
+• ইউটিউব লিংক: <code>/setyoutube https://youtube.com/@channel</code>
+• টাস্কের নাম বদলাতে: <code>/settasktitle আপনার টাইটেল</code>
+• একাধিক ফাইলের ১টি ব্যাচ লিংক বানাতে: <code>/batch 101 102</code>`;
 
-  await ctx.editMessageText(text, {
-    parse_mode: 'HTML',
-    ...Markup.inlineKeyboard([[Markup.button.callback('🔙 এডমিন ড্যাশবোর্ড', 'back_to_admin')]])
-  });
+  const keyboard = Markup.inlineKeyboard([
+    [
+      Markup.button.callback(settings.forceSubEnabled ? '🔒 ফোর্স সাব: [বন্ধ করুন]' : '🔓 ফোর্স সাব: [চালু করুন]', 'toggle_forcesub'),
+      Markup.button.callback(settings.extraTaskEnabled ? '🔴 ইউটিউব টাস্ক: [বন্ধ করুন]' : '🔴 ইউটিউব টাস্ক: [চালু করুন]', 'toggle_extratask')
+    ],
+    [
+      Markup.button.callback(settings.protectContent ? '🛡️ ফরওয়ার্ড ব্লক: [বন্ধ করুন]' : '🛡️ ফরওয়ার্ড ব্লক: [চালু করুন]', 'toggle_protect'),
+      Markup.button.callback('🧪 লক স্ক্রিন টেস্ট', 'test_lock_screen')
+    ],
+    [
+      Markup.button.callback('🔙 এডমিন ড্যাশবোর্ড', 'back_to_admin')
+    ]
+  ]);
+
+  if (ctx.callbackQuery) {
+    return ctx.editMessageText(text, { parse_mode: 'HTML', ...keyboard });
+  } else {
+    return ctx.reply(text, { parse_mode: 'HTML', ...keyboard });
+  }
+}
+
+bot.action('admin_settings', async (ctx) => {
+  await ctx.answerCbQuery();
+  return renderAdminSettings(ctx);
 });
+
+bot.action('toggle_forcesub', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx.from.id)) return;
+  const current = db.getSettings();
+  db.updateSettings({ forceSubEnabled: !current.forceSubEnabled });
+  return renderAdminSettings(ctx);
+});
+
+bot.action('toggle_extratask', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx.from.id)) return;
+  const current = db.getSettings();
+  db.updateSettings({ extraTaskEnabled: !current.extraTaskEnabled });
+  return renderAdminSettings(ctx);
+});
+
+bot.action('toggle_protect', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx.from.id)) return;
+  const current = db.getSettings();
+  db.updateSettings({ protectContent: !current.protectContent });
+  return renderAdminSettings(ctx);
+});
+
+bot.action('test_lock_screen', async (ctx) => {
+  await ctx.answerCbQuery();
+  if (!isAdmin(ctx.from.id)) return;
+  const allFiles = db.getAllFiles();
+  const sampleFile = allFiles[0] || { key: 'file_test', fileName: 'FreeFire_VIP_Config.zip', fileSize: '3.59 MB', downloads: 12 };
+  return sendLockScreen(ctx, sampleFile, true);
+});
+
 
 // --- Admin Section: Automatic Channel Detection via Forwarded Post or File Upload ---
 bot.on('message', async (ctx, next) => {
@@ -577,19 +855,22 @@ bot.on('message', async (ctx, next) => {
     }
   }
 
-  // If Admin uploads a file/document
-  if (userIsAdmin && ctx.message.document) {
-    const doc = ctx.message.document;
-    const rawSize = doc.file_size || 0;
+  // If Admin uploads a file/document/video/audio
+  const mediaObj = ctx.message.document || ctx.message.video || ctx.message.audio;
+  if (userIsAdmin && mediaObj) {
+    const rawSize = mediaObj.file_size || 0;
     const fileSize = formatBytes(rawSize);
-    const fileName = doc.file_name || `File_${Date.now()}`;
+    let defaultName = `File_${Date.now()}`;
+    if (ctx.message.video) defaultName = `Video_${Date.now()}.mp4`;
+    else if (ctx.message.audio) defaultName = `Audio_${Date.now()}.mp3`;
+    const fileName = mediaObj.file_name || defaultName;
 
     const newFile = db.addFile({
-      telegramFileId: doc.file_id,
+      telegramFileId: mediaObj.file_id,
       fileName: fileName,
       fileSize: fileSize,
       rawSize: rawSize,
-      mimeType: doc.mime_type
+      mimeType: mediaObj.mime_type
     });
 
     const shareUrl = `https://t.me/${botInfo.username}?start=${newFile.key}`;
@@ -608,7 +889,8 @@ bot.on('message', async (ctx, next) => {
 <code>https://t.me/${botInfo.username}?start=files</code>
 
 💡 <b>ব্যবহারের নিয়ম:</b>
-এই লিংকটি সরাসরি আপনার ইউটিউব ভিডিওর ডেসক্রিপশনে দিয়ে দিন!`;
+এই লিংকটি সরাসরি আপনার ইউটিউব ভিডিওর ডেসক্রিপশনে দিয়ে দিন!
+(একাধিক ফাইল ১টি লিংকে দিতে চাইলে লিখুন: <code>/batch ${newFile.key.replace('file_', '')} ...</code>)`;
 
     return ctx.reply(replyMsg, {
       parse_mode: 'HTML',
@@ -620,6 +902,146 @@ bot.on('message', async (ctx, next) => {
   }
 
   return next();
+});
+
+// --- Auto Channel Detection (বটকে চ্যানেলে এডমিন করলে স্বয়ংক্রিয় কানেক্ট) ---
+bot.on('my_chat_member', async (ctx) => {
+  try {
+    const chat = ctx.myChatMember.chat;
+    const newStatus = ctx.myChatMember.new_chat_member.status;
+    if (chat && chat.type === 'channel' && ['administrator', 'creator'].includes(newStatus)) {
+      const channelId = chat.id.toString();
+      const channelTitle = chat.title || 'অফিসিয়াল চ্যানেল';
+      let inviteLink = chat.invite_link;
+      if (!inviteLink && chat.username) {
+        inviteLink = `https://t.me/${chat.username}`;
+      }
+
+      db.updateSettings({
+        channelId,
+        channelTitle,
+        ...(inviteLink ? { channelInviteLink: inviteLink } : {})
+      });
+
+      console.log(`🎉 Auto-detected channel admin: ${channelTitle} (${channelId})`);
+      await bot.telegram.sendMessage(SOLE_OWNER_ID, `🎉 <b>চ্যানেল স্বয়ংক্রিয়ভাবে কানেক্ট হয়েছে!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n📢 <b>চ্যানেল:</b> ${escapeHtml(channelTitle)}\n🆔 <b>চ্যানেল আইডি:</b> <code>${channelId}</code>\n🔗 <b>ইনভাইট লিংক:</b> ${inviteLink || db.getSettings().channelInviteLink}\n\n✅ <b>কাউন্টিং ও ফোর্স সাবস্ক্রিপশন সক্রিয় হয়েছে!</b>`, { parse_mode: 'HTML' });
+    }
+  } catch (e) {
+    console.error('my_chat_member error:', e.message);
+  }
+});
+
+// Auto-detect channel from channel posts
+bot.on('channel_post', async (ctx) => {
+  try {
+    const chat = ctx.channelPost.chat;
+    if (chat && chat.type === 'channel') {
+      const channelId = chat.id.toString();
+      const channelTitle = chat.title || 'অফিসিয়াল চ্যানেল';
+      const current = db.getSettings();
+      if (!current.channelId || current.channelId !== channelId) {
+        db.updateSettings({ channelId, channelTitle });
+        console.log(`📌 Detected channel_post from ${channelTitle} (${channelId})`);
+      }
+    }
+  } catch (e) {}
+});
+
+// --- Channel & Task Setup Commands ---
+bot.command('setchannel', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+  const input = ctx.message.text.replace('/setchannel', '').trim();
+  if (!input) {
+    return ctx.reply('⚠️ ব্যবহারের নিয়ম:\n<code>/setchannel -100xxxxxxxxxx</code>\nঅথবা\n<code>/setchannel @আপনারচ্যানেলইউজারনেম</code>\n\n(অথবা আপনার চ্যানেল থেকে যেকোনো একটি মেসেজ এখানে <b>Forward</b> করে পাঠিয়ে দিন)');
+  }
+
+  try {
+    const chat = await bot.telegram.getChat(input);
+    db.updateSettings({
+      channelId: chat.id.toString(),
+      channelTitle: chat.title || 'অফিসিয়াল চ্যানেল',
+      ...(chat.invite_link ? { channelInviteLink: chat.invite_link } : {})
+    });
+    return ctx.reply(`✅ <b>চ্যানেল সফলভাবে সেট হয়েছে!</b>\n\n📢 <b>নাম:</b> ${escapeHtml(chat.title)}\n🆔 <b>আইডি:</b> <code>${chat.id}</code>`, { parse_mode: 'HTML' });
+  } catch (err) {
+    db.updateSettings({ channelId: input });
+    return ctx.reply(`✅ চ্যানেল আইডি <code>${input}</code> সেভ করা হয়েছে!\n⚠️ নিশ্চিত করুন বটটি চ্যানেলে <b>Admin</b> হিসেবে যুক্ত আছে।`, { parse_mode: 'HTML' });
+  }
+});
+
+bot.command('setyoutube', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+  const url = ctx.message.text.replace('/setyoutube', '').trim();
+  if (!url) {
+    return ctx.reply('⚠️ ব্যবহারের নিয়ম:\n<code>/setyoutube https://youtube.com/@আপনারচ্যানেল</code>');
+  }
+  db.updateSettings({
+    extraTaskEnabled: true,
+    extraTaskUrl: url
+  });
+  return ctx.reply(`✅ <b>ইউটিউব টাস্ক লিংক সফলভাবে সেট হয়েছে!</b>\n\n🔗 <code>${url}</code>`, { parse_mode: 'HTML' });
+});
+
+bot.command('setinvite', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+  const link = ctx.message.text.replace('/setinvite', '').trim();
+  if (!link) {
+    return ctx.reply('⚠️ ব্যবহারের নিয়ম:\n<code>/setinvite https://t.me/+xxxxxx</code>');
+  }
+  db.updateSettings({ channelInviteLink: link });
+  return ctx.reply(`✅ <b>চ্যানেল ইনভাইট লিংক সফলভাবে সেট হয়েছে!</b>\n\n🔗 <code>${link}</code>`, { parse_mode: 'HTML' });
+});
+
+bot.command('settasktitle', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+  const title = ctx.message.text.replace('/settasktitle', '').trim();
+  if (!title) {
+    return ctx.reply('⚠️ ব্যবহারের নিয়ম:\n<code>/settasktitle ইউটিউব চ্যানেল সাবস্ক্রাইব করুন</code>');
+  }
+  db.updateSettings({ extraTaskTitle: title });
+  return ctx.reply(`✅ <b>টাস্কের নাম পরিবর্তন সম্পন্ন!</b>\n\n📝 <b>নতুন নাম:</b> ${escapeHtml(title)}`, { parse_mode: 'HTML' });
+});
+
+bot.command('batch', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) return;
+  const args = ctx.message.text.replace('/batch', '').trim().split(/\s+/).filter(Boolean);
+  if (args.length < 2) {
+    return ctx.reply(`⚠️ ব্যবহারের নিয়ম:\n<code>/batch 101 102</code>\nঅথবা\n<code>/batch file_101 file_102 file_103</code>\n\n💡 একাধিক ফাইলকে ১টি ডাউনলোড লিংকে লক করতে এই কমান্ড ব্যবহার করুন।`);
+  }
+
+  const validKeys = [];
+  const validFiles = [];
+  for (const arg of args) {
+    const file = db.getFile(arg);
+    if (file) {
+      validKeys.push(file.key.replace('file_', ''));
+      validFiles.push(file);
+    }
+  }
+
+  if (validKeys.length < 2) {
+    return ctx.reply('⚠️ কমপক্ষে ২টি সঠিক ফাইল নম্বর দিন। যেমন: <code>/batch 101 102</code>');
+  }
+
+  const batchKey = `batch_${validKeys.join('_')}`;
+  const batchUrl = `https://t.me/${botInfo.username}?start=${batchKey}`;
+
+  const listStr = validFiles.map((f, i) => `${i + 1}. ${escapeHtml(f.fileName)} (${f.fileSize})`).join('\n');
+
+  return ctx.reply(`🎁 <b>ব্যাচ ফাইল লিংক তৈরি সম্পন্ন হয়েছে!</b>
+━━━━━━━━━━━━━━━━━━━━━━
+📦 <b>অন্তর্ভুক্ত ফাইলসমূহ (${validFiles.length}টি):</b>
+${listStr}
+━━━━━━━━━━━━━━━━━━━━━━
+🔗 <b>শেয়ার করার লিংক:</b>
+<code>${batchUrl}</code> <i>(ট্যাপ করে কপি করুন)</i>
+
+💡 <i>এই ১টি লিংকেই ভিউয়ার সকল ফাইল পেয়ে যাবে!</i>`, {
+    parse_mode: 'HTML',
+    ...Markup.inlineKeyboard([
+      [Markup.button.url('টেস্ট লিংক ওপেন করুন 🚀', batchUrl)]
+    ])
+  });
 });
 
 // --- Commands ---

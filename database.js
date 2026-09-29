@@ -13,6 +13,10 @@ const defaultData = {
     channelTitle: 'অফিসিয়াল চ্যানেল',
     channelInviteLink: process.env.CHANNEL_INVITE_LINK || 'https://t.me/+0Pio7JsMT_s5MTZl',
     forceSubEnabled: true,
+    extraTaskEnabled: true,
+    extraTaskTitle: 'ইউটিউব চ্যানেল সাবস্ক্রাইব করুন',
+    extraTaskUrl: 'https://youtube.com/@mrmobin9',
+    protectContent: false,
     adsgramBlockId: process.env.ADSGRAM_BLOCK_ID || 'bot-50561',
     adEnabled: true,
     adTitle: '🎁 নোব টপ-আপ প্রমোশন (NOOB TOP UP)',
@@ -115,7 +119,9 @@ class LockerDatabase {
   }
 
   getFile(fileKey) {
-    return this.data.files[fileKey] || null;
+    if (!fileKey) return null;
+    const key = fileKey.toString().startsWith('file_') ? fileKey.toString() : `file_${fileKey}`;
+    return this.data.files[key] || null;
   }
 
   getAllFiles() {
